@@ -9,6 +9,7 @@ TagManager:
   - LightTag
   - Floor
   - Shelf
+  - Wall
   layers:
   - Default
   - TransparentFX

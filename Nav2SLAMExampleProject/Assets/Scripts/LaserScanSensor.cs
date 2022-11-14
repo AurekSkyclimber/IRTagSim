@@ -30,6 +30,7 @@ public class LaserScanSensor : MonoBehaviour
     double m_TimeNextScanSeconds = -1;
     int m_NumMeasurementsTaken;
     List<float> ranges = new List<float>();
+    public List<float> angles = new List<float>();
 
     bool isScanning = false;
     double m_TimeLastScanBeganSeconds = -1;
@@ -98,12 +99,14 @@ public class LaserScanSensor : MonoBehaviour
             scan_time = (float)PublishPeriodSeconds,
             intensities = new float[ranges.Count],
             ranges = ranges.ToArray(),
+            //angles = angles.ToArray();
         };
         
         m_Ros.Publish(topic, msg);
 
         m_NumMeasurementsTaken = 0;
         ranges.Clear();
+        angles.Clear();
         isScanning = false;
         var now = (float)Clock.time;
         if (now > m_TimeNextScanSeconds)
@@ -146,18 +149,25 @@ public class LaserScanSensor : MonoBehaviour
             var t = m_NumMeasurementsTaken / (float)NumMeasurementsPerScan;
             var yawSensorDegrees = Mathf.Lerp(m_CurrentScanAngleStart, m_CurrentScanAngleEnd, t);
             var yawDegrees = yawBaseDegrees + yawSensorDegrees;
+            // Debug.Log("Laser Hit Angle Original: " + yawDegrees);
             var directionVector = Quaternion.Euler(0f, yawDegrees, 0f) * Vector3.forward;
+            // Debug.Log("Laser Hit Vector Original: " + directionVector);
             var measurementStart = RangeMetersMin * directionVector + transform.position;
             var measurementRay = new Ray(measurementStart, directionVector);
             var foundValidMeasurement = Physics.Raycast(measurementRay, out var hit, RangeMetersMax);
             // Only record measurement if it's within the sensor's operating range
             if (foundValidMeasurement)
             {
+                Debug.DrawLine(transform.position, hit.point, Color.red);
+                float RayHitAngle = Mathf.Atan2(hit.point.z - transform.position.z, hit.point.x - transform.position.x) * Mathf.Rad2Deg;
+                // Debug.Log("Laser Hit Angle: " + RayHitAngle);
                 ranges.Add(hit.distance);
+                angles.Add(RayHitAngle);
             }
             else
             {
                 ranges.Add(float.MaxValue);
+                angles.Add(float.MaxValue);
             }
 
             // Even if Raycast didn't find a valid hit, we still count it as a measurement
@@ -172,6 +182,5 @@ public class LaserScanSensor : MonoBehaviour
             }
             EndScan();
         }
-
     }
 }

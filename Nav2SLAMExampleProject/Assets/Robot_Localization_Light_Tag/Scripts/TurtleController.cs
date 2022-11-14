@@ -21,16 +21,7 @@ public class TurtleController : MonoBehaviour
     //Make a list that way waypoint class can access this 
     public List<Transform> Waypoint_Nodes = new List<Transform>();
     Vector3 noAngle;
-    
-    
-    
-    
-    //~ GameObject Light_Tag_2;
-    //~ GameObject Light_Tag_1;
-    //~ GameObject Light_Tag_3;
-    
-    //Planning to draw trails where we instantiate the waypoints
-    
+        
     LineRenderer trail;
     
     const string k_RobotTag = "robot";
@@ -38,7 +29,8 @@ public class TurtleController : MonoBehaviour
 	const string k_RobotBaseName = "base_footprint/base_link";
 	const string k_GoalPoseFrameId = "map";
 	const string k_GoalPoseTopic = "/goal_pose";
-	const string k_OdomTopic = "odom";
+	const string k_OdomTopic = "/odom";
+	const string k_ScanTopic = "/scan";
 	
 	const float k_Nav2InitializeTime = 5.0f;
 	const float k_SleepBetweenWaypointsTime = 2.0f;
@@ -61,16 +53,21 @@ public class TurtleController : MonoBehaviour
    	Transform robot;
    	Vector3 realPos;
 	Quaternion realRot;
+	float[] realRanges = new float[0];
 	
 	private const int numSensors = 8;
 	public Transform[] sensorPoses = new Transform[numSensors];
    
 	string guiMessage = "";
+	
+	public GameObject rangeVisualizationCubePrefab;
+	private List<GameObject> rangeVisualizationCubes = new List<GameObject>();
+	private List<MeshRenderer> rangeVisualizationRenderers = new List<MeshRenderer>();
    
     // Start is called before the first frame update
     void Start()
     {
-        noAngle = this.transform.forward;
+        noAngle = this.transform.right;
         trail = this.GetComponent<LineRenderer>();
         
         robot = transform.Find(k_RobotBaseName);
@@ -82,6 +79,25 @@ public class TurtleController : MonoBehaviour
     void Update()
     {
 		Debug.Log("Real: " + realPos + " | " + realRot);
+		
+		int numRanges = realRanges.Length;
+		if(numRanges > 0) { // Visualize Ranges
+			while(rangeVisualizationCubes.Count < numRanges) {
+				GameObject cube = Instantiate(rangeVisualizationCubePrefab);
+				rangeVisualizationCubes.Add(cube);
+				rangeVisualizationRenderers.Add(cube.GetComponent<MeshRenderer>());
+			}
+
+			float rotAngleStep = -360f / (float) numRanges;
+			for(int i = 0; i < numRanges; i++) {
+				rangeVisualizationCubes[i].SetActive(true);
+				rangeVisualizationCubes[i].transform.position = robot.position + (Quaternion.Euler(0, rotAngleStep * (float) i, 0) * robot.forward * realRanges[i]);
+				rangeVisualizationRenderers[i].material.color = Color.HSVToRGB(Mathf.Clamp01(realRanges[i] / 50f), 1, 1);
+			}
+			for(int i = numRanges; i < rangeVisualizationCubes.Count; i++) {
+				rangeVisualizationCubes[i].SetActive(false);
+			}
+		}
     }
     
 	// Update is called once per frame
@@ -196,7 +212,8 @@ public class TurtleController : MonoBehaviour
 		yield return new WaitForSeconds(k_Nav2InitializeTime);
 		
 		ros.RegisterPublisher<RosMessageTypes.Geometry.PoseStampedMsg>(k_GoalPoseTopic);
-		ros.Subscribe<RosMessageTypes.Nav.OdometryMsg>(k_OdomTopic, OdomCallback);
+		//~ ros.Subscribe<RosMessageTypes.Nav.OdometryMsg>(k_OdomTopic, OdomCallback);
+		ros.Subscribe<RosMessageTypes.Sensor.LaserScanMsg>(k_ScanTopic, ScanCallback);
 		
 		m_RosConnected = true;
 
@@ -231,6 +248,10 @@ public class TurtleController : MonoBehaviour
 		realRot = QuaternionMsgToQuaternion(msg.pose.pose.orientation);
 	}
 	
+	void ScanCallback(RosMessageTypes.Sensor.LaserScanMsg msg) {
+		realRanges = msg.ranges;
+	}
+	
 	Vector3 PointMsgToVector3(PointMsg msg) {
 		return new Vector3((float) msg.x, (float) msg.y, (float) msg.z);
 	}
@@ -239,41 +260,7 @@ public class TurtleController : MonoBehaviour
 		return new Quaternion((float) msg.x, (float) msg.y, (float) msg.z, (float) msg.w);
 	}
 
-    //~ private void OnTriggerEnter(Collider other){
-		//~ RaycastHit hit;
-		//~ Debug.Log("Name of the object: " + other.gameObject.name);
     
-		     
-		//~ if (Physics.Raycast(transform.position, /*Front_Vector*/ noAngle*rayLength, out hit))
-		//~ {
-			
-			
-			//~ string Tag = hit.transform.gameObject.name;//Alternative ->hit.collider.gameObject.name
-			
-			
-			//~ switch (Tag){
-			//~ case "Light_Tag_2":
-				//~ GameObject wp1 = Instantiate(WaypointPrefab,new Vector3(2.8f, 0f, -1.0f),Quaternion.identity);
-				//~ //wp1.tag="Waypoint";//this is unnecessary if our prefab ia tagged
-				//~ Waypoint_Nodes.Add(wp1);
-				//~ break;
-
-			//~ case "Light_Tag_1":
-			   //~ GameObject wp2 = Instantiate(WaypointPrefab,new Vector3(3.7f, 0f, -1.5f),Quaternion.identity);
-			   //~ //wp2.tag="Waypoint";
-			   //~ Waypoint_Nodes.Add(wp2);
-			   //~ break;
-	 
-			//~ case "Light_Tag_3":
-			   //~ GameObject wp3 = Instantiate(WaypointPrefab,new Vector3(-6.9f, 0f, -1.5f),Quaternion.identity);
-			   //~ //wp3.tag="Waypoint";
-			   //~ Waypoint_Nodes.Add(wp3);
-			   //~ break;
-		   //~ }
-		//~ }
-	//~ }
-		
-		
 		
 	public void DrawPath(LineRenderer lr,List<Transform> points){		
 		 lr.SetColors(Color.blue, Color.blue);
@@ -284,12 +271,9 @@ public class TurtleController : MonoBehaviour
 		 for (int i = 0; i < (n/* - 1*/); i++)
 		 {
 			 pointLine[i] = points[i].position;
-			 //~ Debug.Log(points.Count);
+			
 		 }         
-         
-         // Just push first element at the last position.
-		//~ pointLine[n-1] = points[0].position;
- 
+        
 		lr.positionCount = n;
 		lr.SetPositions(pointLine);        
          
